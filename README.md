@@ -48,9 +48,9 @@ GitHub Actions 会自动打包镜像，不用在本地从 Dockerfile 构建 xray
    ./deploy.sh kjgx --from-ghcr
    ```
    这条命令用 `Kraftfile.oci` 把 GHCR 镜像展平成 Unikraft 镜像，再创建实例；其余步骤（生成 UUID、粘域名、生成链接）和默认模式完全一样。
-4. **Fork 后用自己的镜像**：Fork 这个仓库 → Actions 标签页点 Enable workflows → 随便推一次 main（或手动 Run workflow），Actions 就会打出**你自己的**镜像 `ghcr.io/<你的用户名>/unikraft-xray-node:latest`（镜像名取自 `github.repository`，不用改任何代码），然后这样部署：
+4. **Fork 后用自己的镜像**：Fork 这个仓库 → Actions 标签页点 Enable workflows → 随便推一次 main（或手动 Run workflow），Actions 就会打出**你自己的**镜像 `ghcr.io/<你的用户名>/<仓库名>:latest`（镜像名取自 `github.repository`，fork 改名叫 1119 就是 `ghcr.io/afengxiang/1119:latest`，不用改任何代码），然后这样部署：
    ```bash
-   ./deploy.sh <你的 Unikraft 组织名> --from-ghcr ghcr.io/<你的用户名>/unikraft-xray-node:latest
+   ./deploy.sh <你的 Unikraft 组织名> --from-ghcr ghcr.io/<你的用户名>/<仓库名>:latest
    ```
    你的包第一次推送后同样默认 Private：去你自己的包设置里改成 Public，或者部署前先 `docker login ghcr.io`。
 
@@ -63,7 +63,7 @@ GitHub Actions 会自动打包镜像，不用在本地从 Dockerfile 构建 xray
 1. 在 Unikraft Cloud 控制台里创建一个 API token（注意：这个 token 权限很大，能创建、停止、删除你账号下的实例和卷）。
 2. 在 GitHub 仓库 Settings → Secrets and variables → Actions → New repository secret，名字填 `UKC_TOKEN`，值粘贴那个 token（只放 Secrets 里，绝不要贴到聊天、Issue 或代码里）。
 3. 仓库 Actions → Build Unikraft image → Run workflow，org 留空就行，会从 token 自动识别你那个账号的组织（换别的账号也不用改），点运行。
-4. 跑完去控制台 New Instance，Image 下拉框里就能选到 `kjgx/xray-node:latest` 了。
+4. 跑完去控制台 New Instance，Image 下拉框里就能选到 `<组织>/<仓库名>:latest` 了（主仓库是 `kjgx/unikraft-xray-node`，fork 之后是你自己的组织/仓库名，比如 `afengxiang/1119`）。
 
 触发是手动的，不会在每次 push 时自动跑——没配 token 的 fork 不会被打扰。
 
@@ -138,7 +138,7 @@ CF 不是必选项：直连 sin 已经快的时候，加 CF 大概率更慢；�
 | `Dockerfile` | 两阶段构建：拉 Xray v26.11.9 → alpine 运行镜像 + entrypoint |
 | `Kraftfile` | spec v0.7，`kraftcloud/x86_64`，EROFS，`cmd: ["/entrypoint.sh"]` |
 | `Kraftfile.oci` | 用 GHCR 镜像部署时的模板（`__GHCR_IMAGE__` 由 deploy.sh 替换，生成 `Kraftfile.ghcr`） |
-| `.github/workflows/docker.yml` | GitHub Actions：Docker 构建 → 推 GHCR（`ghcr.io/<所有者>/unikraft-xray-node:latest`）+ xray 冒烟测试 |
+| `.github/workflows/docker.yml` | GitHub Actions：Docker 构建 → 推 GHCR（`ghcr.io/<所有者>/<仓库名>:latest`）+ xray 冒烟测试 |
 | `.github/workflows/unikraft.yml` | GitHub Actions（手动触发）：装 Unikraft CLI → `UKC_TOKEN` 登录 → `unikraft build` 推到 Unikraft 中央仓库（本地零构建） |
 | `LICENSE` | MIT（fork 复用） |
 | `entrypoint.sh` | 启动时用环境变量写 xray 双入站配置（8080 WS + 8081 XHTTP）并启动 |

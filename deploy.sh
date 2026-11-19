@@ -3,9 +3,9 @@
 # 用法：
 #   ./deploy.sh <你的 Unikraft 组织名>                                  # 默认：本地从 Dockerfile 构建
 #   ./deploy.sh <你的 Unikraft 组织名> --from-ghcr [GHCR 镜像地址]      # 用 GitHub 打好的镜像部署
-#     不填镜像地址时默认 ghcr.io/kjgx66f/unikraft-xray-node:latest；
-#     fork 后用自己的镜像：./deploy.sh <org> --from-ghcr ghcr.io/<你的用户名>/unikraft-xray-node:latest
-#     也可以用环境变量：GHCR_IMAGE=ghcr.io/<你的用户名>/unikraft-xray-node:latest ./deploy.sh <org> --from-ghcr
+#     不填镜像地址时默认 ghcr.io/kjgx66f/unikraft-xray-node:latest（主仓库的镜像）；
+#     fork 后用自己的镜像：./deploy.sh <org> --from-ghcr ghcr.io/<你的用户名>/<仓库名>:latest
+#     也可以用环境变量：GHCR_IMAGE=ghcr.io/<你的用户名>/<仓库名>:latest ./deploy.sh <org> --from-ghcr
 #   组织名在 unikraft.com 注册后可见（登录后右上角，或 `unikraft login` 成功后显示）。
 #   metro 默认 sin（新加坡，离国内最近）；要换城市：METRO=fra ./deploy.sh <org>
 # 流程：生成 UUID + 随机 WS/XHTTP 路径 -> build 镜像 -> run 实例 -> 你粘回平台域名
@@ -18,7 +18,10 @@ ORG="${1:-}"
 if [ -z "$ORG" ]; then
   read -rp "输入你的 Unikraft 组织名（org，例如 kjgx）: " ORG
 fi
-IMAGE="$ORG/xray-node:latest"
+# 镜像名默认取当前文件夹名（也就是仓库名），fork 改名后自动跟着变；
+# 想固定成别的名字：IMAGE_NAME=xray-node ./deploy.sh <org>
+REPO_NAME="${IMAGE_NAME:-$(basename "$PWD")}"
+IMAGE="$ORG/$REPO_NAME:latest"
 METRO="${METRO:-sin}"
 
 # --from-ghcr 模式：用 GitHub Actions 打好的 GHCR 镜像部署，跳过本地从 Dockerfile 构建 xray。

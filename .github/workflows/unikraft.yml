@@ -1,7 +1,8 @@
 # 在 GitHub Actions 里直接打 Unikraft 镜像，不用本地装 CLI / Docker。
 #
 # 用途：把本仓库的 Dockerfile + Kraftfile 打包成 Unikraft 镜像，
-# 推到 Unikraft 中央仓库 index.unikraft.io/<你的组织>/xray-node:latest，
+# 推到 Unikraft 中央仓库 index.unikraft.io/<你的组织>/<仓库名>:latest，
+# （镜像名取自仓库名，fork 改名后自动跟着变），
 # 打完控制台 New Instance 的 Image 下拉框里就能选到它。
 #
 # 触发：只手动触发（Actions → Build Unikraft image → Run workflow），
@@ -71,9 +72,13 @@ jobs:
           unikraft login --token /tmp/ukc-token --organization "$ORG"
           echo "org=$ORG" >> "$GITHUB_OUTPUT"
           echo "识别到的组织：$ORG"
+          # 镜像名取仓库名（GITHUB_REPOSITORY 是 所有者/仓库名），fork 改名后自动跟着变。
+          REPO="${GITHUB_REPOSITORY##*/}"
+          echo "repo=$REPO" >> "$GITHUB_OUTPUT"
+          echo "镜像：$ORG/$REPO:${{ inputs.tag }}"
 
       - name: Build and push Unikraft image
-        run: unikraft build . --output ${{ steps.login.outputs.org }}/xray-node:${{ inputs.tag }}
+        run: unikraft build . --output ${{ steps.login.outputs.org }}/${{ steps.login.outputs.repo }}:${{ inputs.tag }}
 
       - name: Show image
         run: unikraft images list
