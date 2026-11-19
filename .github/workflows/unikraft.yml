@@ -15,17 +15,17 @@
 #   只放进仓库 Secrets（加密保存，不会显示在日志里），绝不要贴到聊天、Issue 或代码里。
 #   万一泄露，立刻去控制台吊销并重新生成。
 #
-# Fork 的人：同样加自己的 UKC_TOKEN 秘密，Run workflow 时把 org 改成自己的
-# Unikraft 组织名，镜像就进他自己的仓库。
+# Fork 的人：同样加自己的 UKC_TOKEN 秘密，Run workflow 时 org 留空就行，
+# workflow 会从 token 自动识别那个账号的组织，镜像就进他自己的仓库。
 name: Build Unikraft image
 
 on:
   workflow_dispatch:
     inputs:
       org:
-        description: "Unikraft 组织名（镜像会推到 <org>/xray-node）"
-        required: true
-        default: "kjgx"
+        description: "Unikraft 组织名（留空自动识别，推荐；自动识别失败时再填）"
+        required: false
+        default: ""
       tag:
         description: "镜像标签"
         required: true
@@ -46,15 +46,34 @@ jobs:
 
       # 新版 CLI 的非交互登录：token 写进一个文件，再用 --token 指过去。
       # 不用在日志里出现 token 的值；文件只存在这一步的 runner 里。
-      - name: Log in to Unikraft Cloud
+      # 组织自动识别：登录成功后 CLI 会把组织写进配置文件，从那里读出来，
+      # 换别的账号也不用改 workflow；读不到时才用手动填的 org 输入。
+      # 登录失败重试 3 次：到控制平面的 TLS 握手偶尔超时，重跑一般就过。
+      - name: Log in and detect organization
+        id: login
         run: |
+          trap 'rm -f /tmp/ukc-token' EXIT
           printf '%s' "${{ secrets.UKC_TOKEN }}" > /tmp/ukc-token
           chmod 600 /tmp/ukc-token
-          unikraft login --token /tmp/ukc-token
-          rm -f /tmp/ukc-token
+          ok=0
+          for i in 1 2 3; do
+            if unikraft login --token /tmp/ukc-token; then ok=1; break; fi
+            echo "登录失败，10 秒后重试（第 $i/3 次）…"
+            sleep 10
+          done
+          test "$ok" = 1
+          ORG=$(awk '/^[[:space:]]*organization:/ {print $2; exit}' ~/.config/unikraft/config.yaml | tr -d '"')
+          if [ -z "$ORG" ]; then ORG="${{ inputs.org }}"; fi
+          if [ -z "$ORG" ]; then
+            echo "::error::无法自动识别组织：请在 Run workflow 时填写 org（Unikraft 控制台左上角的组织名）"
+            exit 1
+          fi
+          unikraft login --token /tmp/ukc-token --organization "$ORG"
+          echo "org=$ORG" >> "$GITHUB_OUTPUT"
+          echo "识别到的组织：$ORG"
 
       - name: Build and push Unikraft image
-        run: unikraft build . --output ${{ inputs.org }}/xray-node:${{ inputs.tag }}
+        run: unikraft build . --output ${{ steps.login.outputs.org }}/xray-node:${{ inputs.tag }}
 
       - name: Show image
         run: unikraft images list

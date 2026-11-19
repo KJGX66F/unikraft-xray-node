@@ -1,0 +1,100 @@
+# 在 GitHub Actions 里一键创建 Unikraft 实例，不用再填控制台表单。
+#
+# 用途：用已经打好的镜像 <org>/xray-node:latest 直接建一个 running 的实例，
+# 端口、内存、重启策略这些都已经写死在下面，Run workflow 点一下就建好，
+# 日志最后会打印出实例的域名。
+#
+# 前置条件（只做一次）：
+#   1. UKC_TOKEN 已经加过（打镜像那一步用的就是它）。
+#   2. 再加三个 Secrets（Settings → Secrets and variables → Actions）：
+#      NODE_UUID、NODE_WS_PATH、NODE_XHTTP_PATH —— 就是建实例时填进
+#      控制台环境变量的那三个值。值只存在 Secrets 里，日志里会被打码，
+#      绝不要贴到聊天、Issue 或代码里。
+#
+# 注意：这个 workflow 只打印域名，不打印节点链接。因为仓库是公开的，
+# Actions 日志谁都能看，链接里带着 UUID，打印出来就等于把节点公开了。
+# 拿到域名后，在本地跑 gen_links.py 生成链接（或把域名发给 Muse 生成）：
+#   python3 gen_links.py --domain <域名> --uuid <UUID> --ws-path <路径> --xhttp-path <路径> --out-dir node-out
+#
+# 输入 metro 默认 sin（新加坡，离国内最近）；name 在同一个 metro 下必须唯一，
+# 重复跑之前先删掉旧实例，或换个 name。
+name: Deploy Unikraft instance
+
+on:
+  workflow_dispatch:
+    inputs:
+      org:
+        description: "Unikraft 组织名（留空自动识别，推荐；自动识别失败时再填）"
+        required: false
+        default: ""
+      metro:
+        description: "部署到哪个机房（sin 新加坡离国内最近）"
+        required: true
+        default: "sin"
+      name:
+        description: "实例名字（同一机房下必须唯一）"
+        required: true
+        default: "xray-node"
+      tag:
+        description: "镜像标签"
+        required: true
+        default: "latest"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      NODE_UUID: ${{ secrets.NODE_UUID }}
+      NODE_WS_PATH: ${{ secrets.NODE_WS_PATH }}
+      NODE_XHTTP_PATH: ${{ secrets.NODE_XHTTP_PATH }}
+    steps:
+      - name: Install Unikraft CLI
+        run: curl --proto '=https' --tlsv1.2 -fsSL https://unikraft.com/cli/install.sh | sh
+
+      # 新版 CLI 的非交互登录：token 写进一个文件，再用 --token 指过去。
+      # 不用在日志里出现 token 的值；文件只存在这一步的 runner 里。
+      # 组织自动识别：登录成功后 CLI 会把组织写进配置文件，从那里读出来，
+      # 换别的账号也不用改 workflow；读不到时才用手动填的 org 输入。
+      # 登录失败重试 3 次：到控制平面的 TLS 握手偶尔超时，重跑一般就过。
+      - name: Log in and detect organization
+        id: login
+        run: |
+          trap 'rm -f /tmp/ukc-token' EXIT
+          printf '%s' "${{ secrets.UKC_TOKEN }}" > /tmp/ukc-token
+          chmod 600 /tmp/ukc-token
+          ok=0
+          for i in 1 2 3; do
+            if unikraft login --token /tmp/ukc-token; then ok=1; break; fi
+            echo "登录失败，10 秒后重试（第 $i/3 次）…"
+            sleep 10
+          done
+          test "$ok" = 1
+          ORG=$(awk '/^[[:space:]]*organization:/ {print $2; exit}' ~/.config/unikraft/config.yaml | tr -d '"')
+          if [ -z "$ORG" ]; then ORG="${{ inputs.org }}"; fi
+          if [ -z "$ORG" ]; then
+            echo "::error::无法自动识别组织：请在 Run workflow 时填写 org（Unikraft 控制台左上角的组织名）"
+            exit 1
+          fi
+          unikraft login --token /tmp/ukc-token --organization "$ORG"
+          echo "org=$ORG" >> "$GITHUB_OUTPUT"
+          echo "识别到的组织：$ORG"
+
+      - name: Create instance
+        run: |
+          unikraft run --metro ${{ inputs.metro }} \
+            --image ${{ steps.login.outputs.org }}/xray-node:${{ inputs.tag }} \
+            -n ${{ inputs.name }} \
+            -m 256MiB --vcpus 1 \
+            -p 443:8080/http+tls -p 8443:8081/tls \
+            --scale-to-zero policy=off \
+            --restart always \
+            --autostart \
+            -e UUID="$NODE_UUID" \
+            -e WS_PATH="$NODE_WS_PATH" \
+            -e XHTTP_PATH="$NODE_XHTTP_PATH" \
+            | tee /tmp/run.log
+          echo "=== 实例域名 ==="
+          grep -o '[a-z0-9-]*\.${{ inputs.metro }}\.unikraft\.app' /tmp/run.log | sort -u || echo "（没从日志里抓到域名，往上翻 run 的完整输出，找 unikraft.app 结尾的地址）"

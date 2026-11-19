@@ -62,10 +62,26 @@ GitHub Actions 会自动打包镜像，不用在本地从 Dockerfile 构建 xray
 
 1. 在 Unikraft Cloud 控制台里创建一个 API token（注意：这个 token 权限很大，能创建、停止、删除你账号下的实例和卷）。
 2. 在 GitHub 仓库 Settings → Secrets and variables → Actions → New repository secret，名字填 `UKC_TOKEN`，值粘贴那个 token（只放 Secrets 里，绝不要贴到聊天、Issue 或代码里）。
-3. 仓库 Actions → Build Unikraft image → Run workflow，org 填 `kjgx`（fork 的人填自己的组织名），点运行。
+3. 仓库 Actions → Build Unikraft image → Run workflow，org 留空就行，会从 token 自动识别你那个账号的组织（换别的账号也不用改），点运行。
 4. 跑完去控制台 New Instance，Image 下拉框里就能选到 `kjgx/xray-node:latest` 了。
 
 触发是手动的，不会在每次 push 时自动跑——没配 token 的 fork 不会被打扰。
+
+## 连控制台表单都不想填？用 GitHub Actions 一键建实例
+
+`.github/workflows/deploy.yml` 会在 GitHub 的服务器上跑 `unikraft run`，直接建好实例，连控制台都不用开：
+
+1. 除了 `UKC_TOKEN`，再加三个 Secrets：`NODE_UUID`、`NODE_WS_PATH`、`NODE_XHTTP_PATH`——就是建实例时要填的那三个环境变量的值。
+2. 仓库 Actions → Deploy Unikraft instance → Run workflow，org 不用填（自动识别），metro 默认 `sin`，name 默认 `xray-node`，点运行。
+3. 跑完看日志最后的「实例域名」，就是平台给的域名。
+
+拿到域名后，用 `gen_links.py` 生成节点链接（或把域名发给 Muse 生成）：
+
+```bash
+python3 ./gen_links.py --domain <域名> --uuid <UUID> --ws-path <路径> --xhttp-path <路径> --out-dir ./node-out
+```
+
+注意：这个 workflow 故意不打印节点链接——仓库是公开的，Actions 日志谁都能看，链接里带着 UUID，打印出来就等于把节点公开了。
 
 ## 加 CF 提速（可选，分两步）
 
