@@ -54,7 +54,18 @@ GitHub Actions 会自动打包镜像，不用在本地从 Dockerfile 构建 xray
    ```
    你的包第一次推送后同样默认 Private：去你自己的包设置里改成 Public，或者部署前先 `docker login ghcr.io`。
 
-**诚实说明**：GHCR 里的镜像是普通 Docker 镜像，不能直接 `unikraft run --image ghcr.io/...` 跑在公开云上——Unikraft 的外部镜像直跑只对 BYOC / 本地部署开放，公开云必须经过 `Kraftfile.oci` + 本地 `unikraft build` 这一步打包。真正零本地构建的做法是把 Unikraft API token 放进仓库 Secrets，让 Actions 直接跑 `unikraft build` 推到 `index.unikraft.io`，那个没做，需要的话再加。
+**诚实说明**：GHCR 里的镜像是普通 Docker 镜像，不能直接 `unikraft run --image ghcr.io/...` 跑在公开云上——Unikraft 的外部镜像直跑只对 BYOC / 本地部署开放，公开云必须经过 `Kraftfile.oci` + 本地 `unikraft build` 这一步打包。想连本地构建都省掉，看下面一条。
+
+## 不想在本地构建？用 GitHub Actions 直接打 Unikraft 镜像
+
+`.github/workflows/unikraft.yml` 会在 GitHub 的服务器上跑 `unikraft build`，把镜像直接推到 Unikraft 中央仓库，本地什么都不用装：
+
+1. 在 Unikraft Cloud 控制台里创建一个 API token（注意：这个 token 权限很大，能创建、停止、删除你账号下的实例和卷）。
+2. 在 GitHub 仓库 Settings → Secrets and variables → Actions → New repository secret，名字填 `UKC_TOKEN`，值粘贴那个 token（只放 Secrets 里，绝不要贴到聊天、Issue 或代码里）。
+3. 仓库 Actions → Build Unikraft image → Run workflow，org 填 `kjgx`（fork 的人填自己的组织名），点运行。
+4. 跑完去控制台 New Instance，Image 下拉框里就能选到 `kjgx/xray-node:latest` 了。
+
+触发是手动的，不会在每次 push 时自动跑——没配 token 的 fork 不会被打扰。
 
 ## 加 CF 提速（可选，分两步）
 
@@ -112,6 +123,7 @@ CF 不是必选项：直连 sin 已经快的时候，加 CF 大概率更慢；�
 | `Kraftfile` | spec v0.7，`kraftcloud/x86_64`，EROFS，`cmd: ["/entrypoint.sh"]` |
 | `Kraftfile.oci` | 用 GHCR 镜像部署时的模板（`__GHCR_IMAGE__` 由 deploy.sh 替换，生成 `Kraftfile.ghcr`） |
 | `.github/workflows/docker.yml` | GitHub Actions：Docker 构建 → 推 GHCR（`ghcr.io/<所有者>/unikraft-xray-node:latest`）+ xray 冒烟测试 |
+| `.github/workflows/unikraft.yml` | GitHub Actions（手动触发）：装 Unikraft CLI → `UKC_TOKEN` 登录 → `unikraft build` 推到 Unikraft 中央仓库（本地零构建） |
 | `LICENSE` | MIT（fork 复用） |
 | `entrypoint.sh` | 启动时用环境变量写 xray 双入站配置（8080 WS + 8081 XHTTP）并启动 |
 | `gen_links.py` | 生成 4 条链接 + Clash + sing-box + 二维码（只依赖标准库） |

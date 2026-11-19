@@ -1,2 +1,5 @@
 .env.local
 node-out/
+__pycache__/
+*.pyc
+Kraftfile.ghcr

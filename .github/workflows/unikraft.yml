@@ -1,0 +1,60 @@
+# 在 GitHub Actions 里直接打 Unikraft 镜像，不用本地装 CLI / Docker。
+#
+# 用途：把本仓库的 Dockerfile + Kraftfile 打包成 Unikraft 镜像，
+# 推到 Unikraft 中央仓库 index.unikraft.io/<你的组织>/xray-node:latest，
+# 打完控制台 New Instance 的 Image 下拉框里就能选到它。
+#
+# 触发：只手动触发（Actions → Build Unikraft image → Run workflow），
+# 不在每次 push 时自动跑，避免没有配 token 的 fork 每次都跑失败。
+#
+# 前置条件（只做一次，2 分钟）：
+#   1. 在 Unikraft Cloud 控制台里创建一个 API token。
+#   2. 在 GitHub 仓库 Settings → Secrets and variables → Actions → New repository secret，
+#      名字填 UKC_TOKEN，值粘贴那个 token。
+#   注意：这个 token 权限很大，能创建、停止、删除你账号下的实例和卷，
+#   只放进仓库 Secrets（加密保存，不会显示在日志里），绝不要贴到聊天、Issue 或代码里。
+#   万一泄露，立刻去控制台吊销并重新生成。
+#
+# Fork 的人：同样加自己的 UKC_TOKEN 秘密，Run workflow 时把 org 改成自己的
+# Unikraft 组织名，镜像就进他自己的仓库。
+name: Build Unikraft image
+
+on:
+  workflow_dispatch:
+    inputs:
+      org:
+        description: "Unikraft 组织名（镜像会推到 <org>/xray-node）"
+        required: true
+        default: "kjgx"
+      tag:
+        description: "镜像标签"
+        required: true
+        default: "latest"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Unikraft CLI
+        run: curl --proto '=https' --tlsv1.2 -fsSL https://unikraft.com/cli/install.sh | sh
+
+      # 新版 CLI 的非交互登录：token 写进一个文件，再用 --token 指过去。
+      # 不用在日志里出现 token 的值；文件只存在这一步的 runner 里。
+      - name: Log in to Unikraft Cloud
+        run: |
+          printf '%s' "${{ secrets.UKC_TOKEN }}" > /tmp/ukc-token
+          chmod 600 /tmp/ukc-token
+          unikraft login --token /tmp/ukc-token
+          rm -f /tmp/ukc-token
+
+      - name: Build and push Unikraft image
+        run: unikraft build . --output ${{ inputs.org }}/xray-node:${{ inputs.tag }}
+
+      - name: Show image
+        run: unikraft images list
