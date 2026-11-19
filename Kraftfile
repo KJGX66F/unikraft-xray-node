@@ -1,0 +1,12 @@
+# Unikraft Cloud 部署描述（Kraftfile spec v0.7，写法照官方 Node/C 示例）
+# runtime base-compat：用平台兼容内核，给 alpine + xray 最大的 Linux 调用兼容面。
+# rootfs 从 ./Dockerfile 构建，EROFS 是平台首选格式。
+# cmd 只负责启动 entrypoint；UUID / WS_PATH 由 `unikraft run -e` 传入，绝不 baked 进镜像。
+spec: v0.7
+runtime: base-compat:latest
+targets:
+  - kraftcloud/x86_64
+rootfs:
+  source: ./Dockerfile
+  format: erofs
+cmd: ["/entrypoint.sh"]

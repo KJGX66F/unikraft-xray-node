@@ -1,0 +1,79 @@
+# 打包镜像：把 Dockerfile 建成镜像，推到 GitHub Container Registry (GHCR)
+#
+# 触发：推到 main（改了 Dockerfile / entrypoint.sh / 本文件时）、发 Release、手动点 Run workflow。
+# 产物：ghcr.io/<仓库所有者小写>/unikraft-xray-node:latest + sha 短哈希标签。
+#   例如本仓库：ghcr.io/kjgx66f/unikraft-xray-node:latest
+#
+# Fork 后不用改任何东西：镜像名取自 github.repository，小写处理后就是你自己的
+# ghcr.io/<你的用户名>/unikraft-xray-node:latest，Actions 跑完就有你自己的镜像。
+# 第一次推送后，包默认是 Private：去包设置里改成 Public，
+#   https://github.com/users/<你的用户名>/packages/container/unikraft-xray-node/settings
+# 否则别人（包括你自己没登录的机器）拉不到。
+#
+# 诚实说明：这个镜像是普通 Docker 镜像（xray + entrypoint.sh），不是 Unikraft 格式镜像。
+# 公开云上不能直接 `unikraft run --image ghcr.io/...`（外部镜像直跑只对 BYOC/本地部署开放），
+# 要用 Kraftfile.oci + 本地 `unikraft build` 把它展平成 Unikraft 镜像再部署，
+# 见 README「用 GitHub 打好的镜像部署」和 deploy.sh --from-ghcr。
+name: Build and push image to GHCR
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - entrypoint.sh
+      - .github/workflows/docker.yml
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # GHCR 镜像名必须全小写，而仓库所有者可能是 KJGX66F 这种大写，必须转小写。
+      - name: Set image name (lowercase)
+        id: image
+        run: echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+            type=ref,event=tag
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Xray 版本只在 Dockerfile 里定（ARG XRAY_VERSION），这里不重复传 build-arg，
+          # 改 Dockerfile 就自动跟上。
+
+      # 冒烟测试：镜像里 xray 能启动并打出版本号（entrypoint 覆盖掉，不会真的跑节点）。
+      - name: Smoke test (xray version)
+        run: docker run --rm --entrypoint /usr/local/bin/xray ${{ steps.image.outputs.name }}:latest version

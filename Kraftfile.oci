@@ -1,0 +1,21 @@
+# 用 GitHub Actions 打好的 GHCR 镜像部署（不用本地从 Dockerfile 构建 xray）
+#
+# 用法：./deploy.sh <你的 Unikraft 组织名> --from-ghcr [ghcr.io/<用户名>/unikraft-xray-node:latest]
+# deploy.sh 会把 __GHCR_IMAGE__ 替换成实际镜像地址，生成 Kraftfile.ghcr，
+# 再用 `unikraft build -K Kraftfile.ghcr .` 打包成 Unikraft 镜像。
+#
+# 原理：rootfs source type oci，unikraft build 把 GHCR 镜像的层展平成 EROFS rootfs；
+# 镜像自己的启动命令（/entrypoint.sh）和环境变量都会带过来，Kraftfile 里写的 cmd 会覆盖。
+# GHCR 镜像本身是普通 Docker 镜像，不能直接 `unikraft run --image ghcr.io/...`
+# 跑在公开云上（Unikraft 的外部镜像直跑只对 BYOC/本地部署开放），必须经过这一步打包。
+# 展平仍需要本地 BuildKit（Docker Desktop），但省掉了下载 Xray、本地构建这一步。
+spec: v0.7
+runtime: base-compat:latest
+targets:
+  - kraftcloud/x86_64
+rootfs:
+  source:
+    type: oci
+    path: __GHCR_IMAGE__
+  format: erofs
+cmd: ["/entrypoint.sh"]
